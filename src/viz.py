@@ -19,7 +19,7 @@ def draw_dot(root):
         uid = str(id(n))
         # for any value in the graph, create a rectangular ("record") node for it
         label_str = n.label if hasattr(n, 'label') and n.label else n._op
-        dot.node(name=uid, label="{ %s | data %.4f }" % (label_str, n.data), shape='record')
+        dot.node(name=uid, label="{ %s | data %.4f | grad %.4f }" % (label_str, n.data, n.grad), shape='record')
         # if this value is a result of some operation, create an op node for it
         if n._op:
             dot.node(name=uid + n._op, label=n._op)
