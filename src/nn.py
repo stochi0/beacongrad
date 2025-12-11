@@ -44,6 +44,48 @@ class Value:
         out._backward = _backward
         return out
 
+    def tanh(self):
+        out = Value(np.tanh(self.data), (self,), 'tanh', f"tanh({self.label})")
+        def _backward():
+            self.grad = (1 - np.tanh(self.data)**2) * out.grad
+        out._backward = _backward
+        return out
+
+    def sigmoid(self):
+        out = Value(1 / (1 + np.exp(-self.data)), (self,), 'sigmoid', f"sigmoid({self.label})")
+        def _backward():
+            self.grad = (1 - 1 / (1 + np.exp(-self.data))) * out.grad
+        out._backward = _backward
+        return out
+
+    def relu(self):
+        out = Value(max(0, self.data), (self,), 'relu', f"relu({self.label})")
+        def _backward():
+            self.grad = (out.data > 0) * out.grad
+        out._backward = _backward
+        return out
+    
+    def leaky_relu(self):
+        out = Value(max(0.01*self.data, self.data), (self,), 'leaky_relu', f"leaky_relu({self.label})")
+        def _backward():
+            self.grad = (out.data > 0) * out.grad + (out.data <= 0) * 0.01 * out.grad
+        out._backward = _backward
+        return out
+    
+    def softmax(self):
+        out = Value(np.exp(self.data) / np.sum(np.exp(self.data)), (self,), 'softmax', f"softmax({self.label})")
+        def _backward():
+            self.grad = (out.data - self.data) * out.grad
+        out._backward = _backward
+        return out
+
+    def log_softmax(self):
+        out = Value(np.log(np.exp(self.data) / np.sum(np.exp(self.data))), (self,), 'log_softmax', f"log_softmax({self.label})")
+        def _backward():
+            self.grad = (out.data - self.data) * out.grad
+        out._backward = _backward
+        return out  
+
     def backward(self):
         topo = []
         visited = set()
