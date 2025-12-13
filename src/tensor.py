@@ -53,9 +53,9 @@ class Tensor:
         out._prev = {self, other}
         def _backward():
             if self.requires_grad:
-                self.grad += other.data * self.data ** (other.data - 1) * out.grad
+                self.grad += unbroadcast(other.data * self.data ** (other.data - 1) * out.grad, self.shape)
             if other.requires_grad:
-                other.grad += unbroadcast(self.data ** other.data * np.log(self.data) * out.grad, other.shape)
+                other.grad += unbroadcast(self.data ** other.data * np.log(self.data) * out.grad, self.shape)
         out._backward = _backward
         return out
 
@@ -94,7 +94,8 @@ class Tensor:
         topo = []
         build_topo(self)
         for node in topo:
-            node.grad = np.zeros_like(node.data)
+            node.grad = np.zeros_like(node.data) if node.requires_grad else None
+            
         self.grad = np.ones_like(self.data) if self.requires_grad else None
         for node in reversed(topo):
             node._backward()
@@ -102,13 +103,13 @@ class Tensor:
 if __name__ == "__main__":
     x = Tensor([1,2,3], requires_grad=True, label='x')
     y = Tensor([4,5,6], requires_grad=True, label='y')
-    z = x + y
+    z = x * y
     z.backward()
     print("z=x+y=", z)
     print("x.grad=", x.grad)
     print("y.grad=", y.grad)
 
-    z = x * y
+    z=x*y
     z.backward()
     print("z=x*y=", z)
     print("x.grad=", x.grad)
