@@ -15,7 +15,6 @@ class Tensor:
 
     def __add__(self, other):
         other = other if isinstance(other, Tensor) else Tensor(other)
-
         out = Tensor(self.data + other.data, requires_grad=self.requires_grad or other.requires_grad, label=f"({self.label} + {other.label})")
         out._prev = {self, other}
         def _backward():
@@ -26,6 +25,18 @@ class Tensor:
         out._backward = _backward
         return out
     
+    def __mul__(self, other):
+        other = other if isinstance(other, Tensor) else Tensor(other)
+        out = Tensor(self.data * other.data, requires_grad=self.requires_grad or other.requires_grad, label=f"({self.label} * {other.label})")
+        out._prev = {self, other}
+        def _backward():
+            if self.requires_grad:
+                self.grad += other.data * out.grad
+            if other.requires_grad:
+                other.grad += self.data * out.grad
+        out._backward = _backward
+        return out
+
     def backward(self):
         def build_topo(node):
             if node not in visited:
@@ -47,5 +58,12 @@ if __name__ == "__main__":
     y = Tensor([4,5,6], requires_grad=True, label='y')
     z = x + y
     z.backward()
-    print(x.grad)  # [1,1,1]
-    print(y.grad)  # [1,1,1]
+    print("z=x+y=", z)
+    print("x.grad=", x.grad)
+    print("y.grad=", y.grad)
+
+    z = x * y
+    z.backward()
+    print("z=x*y=", z)
+    print("x.grad=", x.grad)
+    print("y.grad=", y.grad)
