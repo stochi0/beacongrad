@@ -37,6 +37,42 @@ class Tensor:
         out._backward = _backward
         return out
 
+    def __pow__(self, other):
+        other = other if isinstance(other, Tensor) else Tensor(other)
+        out = Tensor(self.data ** other.data, requires_grad=self.requires_grad or other.requires_grad, label=f"({self.label} ** {other.label})")
+        out._prev = {self, other}
+        def _backward():
+            if self.requires_grad:
+                self.grad += other.data * self.data ** (other.data - 1) * out.grad
+            if other.requires_grad:
+                other.grad += self.data ** other.data * np.log(self.data) * out.grad
+        out._backward = _backward
+        return out
+
+    def __truediv__(self, other):
+        other = other if isinstance(other, Tensor) else Tensor(other)
+        out = Tensor(self.data / other.data, requires_grad=self.requires_grad or other.requires_grad, label=f"({self.label} / {other.label})")
+        out._prev = {self, other}
+        def _backward():
+            if self.requires_grad:
+                self.grad += 1 / other.data * out.grad
+            if other.requires_grad:
+                other.grad += -self.data / other.data**2 * out.grad
+        out._backward = _backward
+        return out
+
+    def __sub__(self, other):
+        other = other if isinstance(other, Tensor) else Tensor(other)
+        out = Tensor(self.data - other.data, requires_grad=self.requires_grad or other.requires_grad, label=f"({self.label} - {other.label})")
+        out._prev = {self, other}
+        def _backward():
+            if self.requires_grad:
+                self.grad += out.grad
+            if other.requires_grad:
+                other.grad -= out.grad
+        out._backward = _backward
+        return out
+
     def backward(self):
         def build_topo(node):
             if node not in visited:
