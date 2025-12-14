@@ -8,3 +8,8 @@ dependencies = [
     "numpy>=2.0.2",
     "graphviz>=0.20",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.9",
+]
