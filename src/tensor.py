@@ -1,22 +1,20 @@
+"""Core Tensor class with automatic differentiation support."""
+
 import numpy as np
+from typing import Union, Optional, Tuple
 
-EPS = 1e-12  # small value to stabilize log in pow derivative
+
+EPS = 1e-12
 
 
-def unbroadcast(grad, shape):
-    """
-    Reduce gradient `grad` back to `shape` after broadcasting.
-    Equivalent to PyTorch's sum_to_shape.
-    """
-
-    # 1. Remove leading axes added by broadcasting
+def unbroadcast(grad: np.ndarray, shape: Tuple[int, ...]) -> np.ndarray:
+    """Reduce gradient back to original shape after broadcasting."""
+    # Remove leading axes added by broadcasting
     if grad.ndim > len(shape):
-        # Reduce all extra leading dims at once
         axes = tuple(range(grad.ndim - len(shape)))
         grad = grad.sum(axis=axes)
 
-    # 2. For axes where the original shape had 1 (broadcasted dim),
-    #    sum over that axis.
+    # Sum over broadcasted dimensions (where original had size 1)
     for i, dim in enumerate(shape):
         if dim == 1:
             grad = grad.sum(axis=i, keepdims=True)
@@ -25,214 +23,290 @@ def unbroadcast(grad, shape):
 
 
 class Tensor:
-    def __init__(self, data, requires_grad=False, label="", dtype=np.float32):
+    """
+    N-dimensional array with automatic differentiation.
+
+    Similar to torch.Tensor, supports:
+    - Arithmetic operations with autograd
+    - Broadcasting semantics
+    - Efficient NumPy backend
+    """
+
+    def __init__(
+        self,
+        data,
+        requires_grad: bool = False,
+        dtype=np.float32,
+        _children: Tuple["Tensor", ...] = (),
+        _op: str = "",
+    ):
         self.data = np.asarray(data, dtype=dtype)
+        self.dtype = dtype
         self.shape = self.data.shape
+        self.ndim = self.data.ndim
+        self.size = self.data.size
         self.requires_grad = requires_grad
 
-        # .grad is None until a backward pass initializes it.
-        # This avoids leaking gradients for constants and matches
-        # common autodiff semantics.
-        self.grad = None
+        # Gradient (initialized on first backward pass)
+        self.grad: Optional[np.ndarray] = None
 
-        # DAG connectivity and local backward function
-        self._prev = set()
+        # Computation graph
+        self._prev = set(_children)
+        self._op = _op
         self._backward = lambda: None
 
-        self.label = label
+    def __repr__(self) -> str:
+        grad_str = f", grad={self.grad}" if self.grad is not None else ""
+        return f"Tensor({self.data}, requires_grad={self.requires_grad}{grad_str})"
 
-    def __repr__(self):
-        return (
-            f"Tensor(data={self.data}, shape={self.shape}, "
-            f"requires_grad={self.requires_grad}, grad={self.grad}, label={self.label})"
-        )
+    def __str__(self) -> str:
+        return f"Tensor({self.data})"
 
-    # ----------------- ops -----------------
+    # ==================== Arithmetic Operations ====================
 
     def __add__(self, other):
-        other = other if isinstance(other, Tensor) else Tensor(other)
-        out = Tensor(self.data + other.data, requires_grad=(self.requires_grad or other.requires_grad),
-                     label=f"({self.label}+{other.label})")
-        out._prev = [self, other]
+        """Element-wise addition."""
+        from . import ops
 
-        def _backward():
-            if out.grad is None:
-                return
-            if self.requires_grad:
-                self.grad += unbroadcast(out.grad, self.shape)
-            if other.requires_grad:
-                other.grad += unbroadcast(out.grad, other.shape)
+        return ops.add(self, other)
 
-        out._backward = _backward
-        return out
+    def __radd__(self, other):
+        """Reverse addition."""
+        from . import ops
+
+        return ops.add(other, self)
 
     def __sub__(self, other):
-        other = other if isinstance(other, Tensor) else Tensor(other)
-        out = Tensor(self.data - other.data, requires_grad=(self.requires_grad or other.requires_grad),
-                     label=f"({self.label}-{other.label})")
-        out._prev = [self, other]
+        """Element-wise subtraction."""
+        from . import ops
 
-        def _backward():
-            if out.grad is None:
-                return
-            if self.requires_grad:
-                self.grad += unbroadcast(out.grad, self.shape)
-            if other.requires_grad:
-                other.grad -= unbroadcast(out.grad, other.shape)
+        return ops.sub(self, other)
 
-        out._backward = _backward
-        return out
+    def __rsub__(self, other):
+        """Reverse subtraction."""
+        from . import ops
+
+        return ops.sub(other, self)
 
     def __mul__(self, other):
-        other = other if isinstance(other, Tensor) else Tensor(other)
-        out = Tensor(self.data * other.data, requires_grad=(self.requires_grad or other.requires_grad),
-                     label=f"({self.label}*{other.label})")
-        out._prev = [self, other]
+        """Element-wise multiplication."""
+        from . import ops
 
-        def _backward():
-            if out.grad is None:
-                return
-            if self.requires_grad:
-                self.grad += unbroadcast(other.data * out.grad, self.shape)
-            if other.requires_grad:
-                other.grad += unbroadcast(self.data * out.grad, other.shape)
+        return ops.mul(self, other)
 
-        out._backward = _backward
-        return out
+    def __rmul__(self, other):
+        """Reverse multiplication."""
+        from . import ops
+
+        return ops.mul(other, self)
 
     def __truediv__(self, other):
-        other = other if isinstance(other, Tensor) else Tensor(other)
-        out = Tensor(self.data / other.data, requires_grad=(self.requires_grad or other.requires_grad),
-                     label=f"({self.label}/{other.label})")
-        out._prev = [self, other]
+        """Element-wise division."""
+        from . import ops
 
-        def _backward():
-            if out.grad is None:
-                return
-            if self.requires_grad:
-                self.grad += unbroadcast((1.0 / other.data) * out.grad, self.shape)
-            if other.requires_grad:
-                other.grad += unbroadcast((-self.data / (other.data ** 2)) * out.grad, other.shape)
+        return ops.div(self, other)
 
-        out._backward = _backward
-        return out
+    def __rtruediv__(self, other):
+        """Reverse division."""
+        from . import ops
+
+        return ops.div(other, self)
 
     def __pow__(self, other):
+        """Element-wise power."""
+        from . import ops
+
+        return ops.pow(self, other)
+
+    def __rpow__(self, other):
+        """Reverse power."""
+        from . import ops
+
+        return ops.pow(other, self)
+
+    def __matmul__(self, other):
+        """Matrix multiplication."""
+        from . import ops
+
+        return ops.matmul(self, other)
+
+    def __rmatmul__(self, other):
+        """Reverse matrix multiplication."""
+        from . import ops
+
+        return ops.matmul(other, self)
+
+    def __neg__(self):
+        """Unary negation."""
+        from . import ops
+
+        return ops.neg(self)
+
+    # ==================== Tensor Operations ====================
+
+    def sum(self, axis=None, keepdims=False):
+        """Sum elements over a given axis."""
+        from . import ops
+
+        return ops.sum(self, axis=axis, keepdims=keepdims)
+
+    def mean(self, axis=None, keepdims=False):
+        """Mean of elements over a given axis."""
+        from . import ops
+
+        return ops.mean(self, axis=axis, keepdims=keepdims)
+
+    def reshape(self, *shape):
+        """Reshape tensor."""
+        from . import ops
+
+        if len(shape) == 1 and isinstance(shape[0], (tuple, list)):
+            shape = shape[0]
+        return ops.reshape(self, shape)
+
+    def transpose(self, axes=None):
+        """Transpose tensor."""
+        from . import ops
+
+        return ops.transpose(self, axes=axes)
+
+    @property
+    def T(self):
+        """Transpose (last two dimensions)."""
+        from . import ops
+
+        return ops.transpose(self)
+
+    # ==================== Activation Functions ====================
+
+    def relu(self):
+        """ReLU activation."""
+        from . import ops
+
+        return ops.relu(self)
+
+    def sigmoid(self):
+        """Sigmoid activation."""
+        from . import ops
+
+        return ops.sigmoid(self)
+
+    def tanh(self):
+        """Tanh activation."""
+        from . import ops
+
+        return ops.tanh(self)
+
+    def softmax(self, axis=-1):
+        """Softmax activation."""
+        from . import ops
+
+        return ops.softmax(self, axis=axis)
+
+    # ==================== Autograd ====================
+
+    def backward(self, grad: Optional[Union["Tensor", np.ndarray]] = None):
         """
-        x ** y
-        Note: derivative wrt y uses log(x). If x contains non-positive values,
-        the derivative is not defined; we clip log's argument to EPS to avoid NaNs,
-        but mathematically the operation assumes x > 0 when differentiating w.r.t y.
+        Compute gradients via reverse-mode autodiff.
+
+        Args:
+            grad: Gradient of scalar output w.r.t. this tensor.
+                  If None, this tensor must be scalar (loss).
         """
-        other = other if isinstance(other, Tensor) else Tensor(other)
-        out = Tensor(self.data ** other.data, requires_grad=(self.requires_grad or other.requires_grad),
-                     label=f"({self.label}**{other.label})")
-        out._prev = [self, other]
-
-        def _backward():
-            if out.grad is None:
-                return
-            # d(x**y)/dx = y * x^(y-1)
-            if self.requires_grad:
-                self.grad += unbroadcast(other.data * (self.data ** (other.data - 1)) * out.grad, self.shape)
-
-            # d(x**y)/dy = x**y * log(x)
-            if other.requires_grad:
-                # clip to avoid log(0); still, mathematically x must be > 0
-                safe_log = np.log(np.clip(self.data, EPS, None))
-                other.grad += unbroadcast(out.data * safe_log * out.grad, other.shape)
-
-        out._backward = _backward
-        return out
-
-    # ----------------- autograd -----------------
-
-    def backward(self, grad=None):
-        """
-        Reverse-mode autodiff.
-          - If grad is None, output must be scalar and we seed with 1.
-          - If grad is provided, it must be a numpy array (or broadcastable) matching output shape.
-
-        This initializes `.grad` for all tensors in the graph that `requires_grad`.
-        """
-        # ---- build topo ----
+        # Build topological order
         topo = []
         visited = set()
 
-        def build(node):
+        def build_topo(node):
             if node not in visited:
                 visited.add(node)
                 for child in node._prev:
-                    build(child)
+                    build_topo(child)
                 topo.append(node)
 
-        build(self)
+        build_topo(self)
 
-        # ---- reset gradients only for nodes that require grad ----
+        # Initialize gradients
         for node in topo:
             if node.requires_grad:
                 node.grad = np.zeros_like(node.data)
-            else:
-                node.grad = None
 
-        # ---- seed gradient ----
+        # Seed gradient
         if grad is None:
-            if self.data.size != 1:
-                raise RuntimeError("grad must be specified for non-scalar outputs (call backward(grad=...))")
+            if self.size != 1:
+                raise RuntimeError(
+                    "grad must be specified for non-scalar outputs. "
+                    "Use .backward(grad=...) or ensure output is scalar."
+                )
             self.grad = np.ones_like(self.data)
         else:
-            # accept numpy array or Tensor
             if isinstance(grad, Tensor):
                 grad = grad.data
-            grad = np.asarray(grad, dtype=np.float32)
-            if grad.shape != self.data.shape:
-                # try broadcasting the supplied grad to the output shape
-                try:
-                    grad = np.broadcast_to(grad, self.data.shape).astype(np.float32)
-                except Exception:
-                    raise RuntimeError("Provided grad is not broadcastable to output shape")
+            grad = np.asarray(grad, dtype=self.dtype)
+            if grad.shape != self.shape:
+                grad = np.broadcast_to(grad, self.shape).astype(self.dtype)
             self.grad = grad
 
-        # ---- backward pass ----
+        # Backward pass
         for node in reversed(topo):
             node._backward()
 
     def zero_grad(self):
-        """
-        Convenience: zero `.grad` for all tensors in the connected graph.
-        Use this before optimization steps to avoid accidental accumulation.
-        """
-        topo = []
-        visited = set()
+        """Zero out gradients."""
+        if self.requires_grad:
+            self.grad = np.zeros_like(self.data)
 
-        def build(node):
-            if node not in visited:
-                visited.add(node)
-                for child in node._prev:
-                    build(child)
-                topo.append(node)
+    # ==================== Utility Methods ====================
 
-        build(self)
-        for node in topo:
-            if node.requires_grad:
-                node.grad = np.zeros_like(node.data)
-            else:
-                node.grad = None
+    def item(self):
+        """Get scalar value (tensor must contain single element)."""
+        if self.size != 1:
+            raise ValueError(
+                "only one element tensors can be converted to Python scalars"
+            )
+        return self.data.item()
+
+    def numpy(self) -> np.ndarray:
+        """Get underlying numpy array."""
+        return self.data
+
+    def detach(self) -> "Tensor":
+        """Create a new tensor detached from computation graph."""
+        return Tensor(self.data.copy(), requires_grad=False, dtype=self.dtype)
+
+    def clone(self) -> "Tensor":
+        """Clone tensor (keeps requires_grad)."""
+        return Tensor(
+            self.data.copy(), requires_grad=self.requires_grad, dtype=self.dtype
+        )
 
 
-# ----------------- quick smoke test -----------------
-if __name__ == "__main__":
-    x = Tensor([[1.0], [2.0], [3.0]], requires_grad=True, label="x")
-    y = Tensor([4.0, 5.0, 6.0, 7.0], requires_grad=True, label="y")
-    print(f"x: shape={x.shape}, data=\n{x.data}\n")
-    print(f"y: shape={y.shape}, data=\n{y.data}\n")
+def tensor(data, requires_grad: bool = False, dtype=np.float32) -> Tensor:
+    """Create a tensor (convenience function)."""
+    return Tensor(data, requires_grad=requires_grad, dtype=dtype)
 
-    z = x * y
-    print(f"z = x * y:\n  shape={z.shape}\n  data=\n{z.data}\n")
 
-    z.backward(np.ones_like(z.data))
+def zeros(*shape, requires_grad: bool = False, dtype=np.float32) -> Tensor:
+    """Create tensor filled with zeros."""
+    return Tensor(
+        np.zeros(shape, dtype=dtype), requires_grad=requires_grad, dtype=dtype
+    )
 
-    print("After backward:")
-    print(f"z.grad:\n{z.grad}\n")
-    print(f"x.grad:\n{x.grad}\n")
-    print(f"y.grad:\n{y.grad}\n")
+
+def ones(*shape, requires_grad: bool = False, dtype=np.float32) -> Tensor:
+    """Create tensor filled with ones."""
+    return Tensor(np.ones(shape, dtype=dtype), requires_grad=requires_grad, dtype=dtype)
+
+
+def randn(*shape, requires_grad: bool = False, dtype=np.float32) -> Tensor:
+    """Create tensor with random normal values."""
+    return Tensor(
+        np.random.randn(*shape).astype(dtype), requires_grad=requires_grad, dtype=dtype
+    )
+
+
+def rand(*shape, requires_grad: bool = False, dtype=np.float32) -> Tensor:
+    """Create tensor with random uniform values [0, 1)."""
+    return Tensor(
+        np.random.rand(*shape).astype(dtype), requires_grad=requires_grad, dtype=dtype
+    )
