@@ -5,8 +5,9 @@ Provides building blocks for creating neural networks with automatic
 parameter management and gradient computation.
 """
 
+import numpy as np
 from typing import List
-from .tensor import Tensor
+from .tensor import Tensor, randn, zeros
 
 
 class Module:
@@ -50,3 +51,47 @@ class Module:
         self.training = False
         for module in self._modules:
             module.eval()
+
+class Linear(Module):
+    """
+    Linear (fully-connected) layer: y = xW^T + b
+
+    Args:
+        in_features: Size of input features
+        out_features: Size of output features
+        bias: Whether to include bias term
+    """
+
+    def __init__(self, in_features: int, out_features: int, bias: bool = True):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+
+        # Initialize weights with Xavier/Glorot initialization
+        k = np.sqrt(1.0 / in_features)
+        self.weight = randn(out_features, in_features, requires_grad=True) * k
+
+        if bias:
+            self.bias = zeros(out_features, requires_grad=True)
+        else:
+            self.bias = None
+
+        self._parameters = [self.weight] + ([self.bias] if bias else [])
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Forward pass.
+
+        Args:
+            x: Input tensor of shape (batch_size, in_features)
+
+        Returns:
+            Output tensor of shape (batch_size, out_features)
+        """
+        out = x @ self.weight.T
+        if self.bias is not None:
+            out = out + self.bias
+        return out
+
+    def __repr__(self):
+        return f"Linear(in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None})"
