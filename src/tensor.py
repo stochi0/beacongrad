@@ -141,6 +141,18 @@ class Tensor:
         from . import ops
 
         return ops.neg(self)
+    
+    def __log__(self):
+        """Natural logarithm."""
+        from . import ops
+
+        return ops.log(self)
+
+    def __exp__(self):
+        """Exponential function."""
+        from . import ops
+
+        return ops.exp(self)
 
     # ==================== Tensor Operations ====================
 
