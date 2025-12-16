@@ -95,3 +95,32 @@ class Linear(Module):
 
     def __repr__(self):
         return f"Linear(in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None})"
+
+class ReLU(Module):
+    """ReLU activation function."""
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x.relu()
+
+    def __repr__(self):
+        return "ReLU()"
+
+
+class Sigmoid(Module):
+    """Sigmoid activation function."""
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x.sigmoid()
+
+    def __repr__(self):
+        return "Sigmoid()"
+
+
+class Tanh(Module):
+    """Tanh activation function."""
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x.tanh()
+
+    def __repr__(self):
+        return "Tanh()"
