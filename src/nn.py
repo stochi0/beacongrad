@@ -158,3 +158,36 @@ class Sequential(Module):
     def __repr__(self):
         module_str = ",\n  ".join(repr(m) for m in self._modules)
         return f"Sequential(\n  {module_str}\n)"
+
+class Embedding(Module):
+    """
+    Embedding layer for discrete tokens.
+
+    Args:
+        num_embeddings: Size of vocabulary
+        embedding_dim: Dimension of embeddings
+    """
+
+    def __init__(self, num_embeddings: int, embedding_dim: int):
+        super().__init__()
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+
+        # Initialize embeddings
+        self.weight = randn(num_embeddings, embedding_dim, requires_grad=True) * 0.01
+        self._parameters = [self.weight]
+
+    def forward(self, indices: np.ndarray) -> Tensor:
+        """
+        Look up embeddings for given indices.
+
+        Args:
+            indices: Array of token indices
+
+        Returns:
+            Embeddings for the given indices
+        """
+        return Tensor(self.weight.data[indices], requires_grad=True)
+
+    def __repr__(self):
+        return f"Embedding(num_embeddings={self.num_embeddings}, embedding_dim={self.embedding_dim})"
