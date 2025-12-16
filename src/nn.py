@@ -96,6 +96,61 @@ class Linear(Module):
     def __repr__(self):
         return f"Linear(in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None})"
 
+class MLP(Module):
+    """
+    Multi-Layer Perceptron (fully-connected neural network).
+
+    Args:
+        input_size: Size of input features
+        hidden_sizes: List of hidden layer sizes
+        output_size: Size of output
+        activation: Activation function ('relu', 'tanh', 'sigmoid')
+        dropout: Dropout probability (0 means no dropout)
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        hidden_sizes: List[int],
+        output_size: int,
+        activation: str = "relu",
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+
+        # Build layers
+        layers = []
+        prev_size = input_size
+
+        for hidden_size in hidden_sizes:
+            layers.append(Linear(prev_size, hidden_size))
+
+            # Add activation
+            if activation == "relu":
+                layers.append(ReLU())
+            elif activation == "tanh":
+                layers.append(Tanh())
+            elif activation == "sigmoid":
+                layers.append(Sigmoid())
+
+            # Add dropout
+            if dropout > 0:
+                layers.append(Dropout(dropout))
+
+            prev_size = hidden_size
+
+        # Output layer (no activation)
+        layers.append(Linear(prev_size, output_size))
+
+        self.network = Sequential(*layers)
+        self._modules = [self.network]
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.network(x)
+
+    def __repr__(self):
+        return repr(self.network)
+
 class ReLU(Module):
     """ReLU activation function."""
 

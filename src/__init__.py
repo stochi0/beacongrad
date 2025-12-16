@@ -29,6 +29,7 @@ from . import optim
 from .nn import (
     Module,
     Linear,
+    MLP,
     ReLU,
     Sigmoid,
     Tanh,
@@ -84,6 +85,7 @@ __all__ = [
     # Neural network components
     "Module",
     "Linear",
+    "MLP",
     "ReLU",
     "Sigmoid",
     "Tanh",
