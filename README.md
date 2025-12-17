@@ -162,6 +162,10 @@ For multi-class classification:
 
 ![3-Class Decision Boundary](assets/example_07_decision_boundary_3class.png)
 
+### Limitations
+
+BeaconGrad prioritizes clarity and correctness over performance; operations are NumPy-based and not optimized for large-scale training.
+
 ### Notes
 - `graphviz` and `matplotlib` are included as dependencies for visualization capabilities.
 - Mascot: [OpenMoji "Lighthouse of Alexandria" (E212)](https://openmoji.org/library/emoji-E212/) (CC BY-SA 4.0).
