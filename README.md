@@ -112,10 +112,12 @@ MLP (2-layer) parity
   forward max error: 0.000e+00
   grad max error:    3.553e-15
 
-Summary  
-Model   Forward max error       Grad max error
-Linear  0.000e+00       2.220e-16
-MLP     0.000e+00       3.553e-15
+#### Summary
+
+| Model  | Forward max error | Grad max error |
+|--------|------------------:|---------------:|
+| Linear | `0.000e+00`       | `2.220e-16`    |
+| MLP    | `0.000e+00`       | `3.553e-15`    |
 ```
 
 ### Computation Graph Visualization
