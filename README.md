@@ -70,7 +70,6 @@ uv run python examples/02_neural_network.py
 uv run python examples/03_classification.py
 uv run python examples/04_custom_model.py
 uv run python examples/05_mlp.py
-uv run python examples/test.py
 ```
 
 ### Notes
