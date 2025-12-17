@@ -128,3 +128,53 @@ class Adam(Optimizer):
 
             # Update parameters
             p.data -= self.lr * m_hat / (np.sqrt(v_hat) + self.eps)
+
+
+class RMSprop(Optimizer):
+    """
+    RMSprop optimizer.
+
+    Args:
+        parameters: List of parameters to optimize
+        lr: Learning rate
+        alpha: Smoothing constant (default: 0.99)
+        eps: Term for numerical stability (default: 1e-8)
+        weight_decay: L2 regularization factor (default: 0)
+    """
+
+    def __init__(
+        self,
+        parameters: List[Tensor],
+        lr: float = 0.01,
+        alpha: float = 0.99,
+        eps: float = 1e-8,
+        weight_decay: float = 0.0,
+    ):
+        super().__init__(parameters, lr)
+        self.alpha = alpha
+        self.eps = eps
+        self.weight_decay = weight_decay
+
+        # Initialize squared gradient moving average
+        self.square_avg = [np.zeros_like(p.data) for p in parameters]
+
+    def step(self):
+        """Perform parameter update."""
+        for i, p in enumerate(self.parameters):
+            if not p.requires_grad or p.grad is None:
+                continue
+
+            grad = p.grad
+
+            # Add weight decay
+            if self.weight_decay != 0:
+                grad = grad + self.weight_decay * p.data
+
+            # Update squared gradient moving average
+            self.square_avg[i] = self.alpha * self.square_avg[i] + (1 - self.alpha) * (
+                grad**2
+            )
+
+            # Update parameters
+            avg = np.sqrt(self.square_avg[i]) + self.eps
+            p.data -= self.lr * grad / avg
