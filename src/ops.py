@@ -28,9 +28,9 @@ def add(a: Union[Tensor, float, int], b: Union[Tensor, float, int]) -> Tensor:
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + unbroadcast(out.grad, a.shape)
+            a.grad += unbroadcast(out.grad, a.shape)
         if b.requires_grad:
-            b.grad = b.grad + unbroadcast(out.grad, b.shape)
+            b.grad += unbroadcast(out.grad, b.shape)
 
     out._backward = _backward
     return out
@@ -52,9 +52,9 @@ def sub(a: Union[Tensor, float, int], b: Union[Tensor, float, int]) -> Tensor:
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + unbroadcast(out.grad, a.shape)
+            a.grad += unbroadcast(out.grad, a.shape)
         if b.requires_grad:
-            b.grad = b.grad - unbroadcast(out.grad, b.shape)
+            b.grad -= unbroadcast(out.grad, b.shape)
 
     out._backward = _backward
     return out
@@ -76,9 +76,9 @@ def mul(a: Union[Tensor, float, int], b: Union[Tensor, float, int]) -> Tensor:
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + unbroadcast(b.data * out.grad, a.shape)
+            a.grad += unbroadcast(b.data * out.grad, a.shape)
         if b.requires_grad:
-            b.grad = b.grad + unbroadcast(a.data * out.grad, b.shape)
+            b.grad += unbroadcast(a.data * out.grad, b.shape)
 
     out._backward = _backward
     return out
@@ -100,9 +100,9 @@ def div(a: Union[Tensor, float, int], b: Union[Tensor, float, int]) -> Tensor:
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + unbroadcast((1.0 / b.data) * out.grad, a.shape)
+            a.grad += unbroadcast((1.0 / b.data) * out.grad, a.shape)
         if b.requires_grad:
-            b.grad = b.grad + unbroadcast((-a.data / (b.data**2)) * out.grad, b.shape)
+            b.grad += unbroadcast((-a.data / (b.data**2)) * out.grad, b.shape)
 
     out._backward = _backward
     return out
@@ -126,13 +126,13 @@ def pow(a: Union[Tensor, float, int], b: Union[Tensor, float, int]) -> Tensor:
         # d(x**y)/dx = y * x^(y-1)
         if a.requires_grad:
             grad_a = b.data * (a.data ** (b.data - 1)) * out.grad
-            a.grad = a.grad + unbroadcast(grad_a, a.shape)
+            a.grad += unbroadcast(grad_a, a.shape)
 
         # d(x**y)/dy = x**y * log(x)
         if b.requires_grad:
             safe_log = np.log(np.clip(a.data, EPS, None))
             grad_b = out.data * safe_log * out.grad
-            b.grad = b.grad + unbroadcast(grad_b, b.shape)
+            b.grad += unbroadcast(grad_b, b.shape)
 
     out._backward = _backward
     return out
@@ -146,7 +146,7 @@ def neg(a: Tensor) -> Tensor:
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad - out.grad
+            a.grad -= out.grad
 
     out._backward = _backward
     return out
@@ -171,12 +171,12 @@ def matmul(a: Union[Tensor, np.ndarray], b: Union[Tensor, np.ndarray]) -> Tensor
         # dL/dA = dL/dOut @ B^T
         if a.requires_grad:
             dA = np.matmul(out.grad, np.swapaxes(b.data, -1, -2))
-            a.grad = a.grad + unbroadcast(dA, a.shape)
+            a.grad += unbroadcast(dA, a.shape)
 
         # dL/dB = A^T @ dL/dOut
         if b.requires_grad:
             dB = np.matmul(np.swapaxes(a.data, -1, -2), out.grad)
-            b.grad = b.grad + unbroadcast(dB, b.shape)
+            b.grad += unbroadcast(dB, b.shape)
 
     out._backward = _backward
     return out
@@ -208,7 +208,7 @@ def sum(a: Tensor, axis=None, keepdims=False) -> Tensor:
                     for ax in sorted(axis):
                         grad = np.expand_dims(grad, axis=ax)
             # Broadcast to input shape
-            a.grad = a.grad + np.broadcast_to(grad, a.shape)
+            a.grad += np.broadcast_to(grad, a.shape)
 
     out._backward = _backward
     return out
@@ -245,7 +245,7 @@ def mean(a: Tensor, axis=None, keepdims=False) -> Tensor:
                 n = np.prod([a.shape[ax] for ax in axis])
 
             grad = grad / n
-            a.grad = a.grad + np.broadcast_to(grad, a.shape)
+            a.grad += np.broadcast_to(grad, a.shape)
 
     out._backward = _backward
     return out
@@ -267,7 +267,7 @@ def reshape(a: Tensor, shape: Tuple[int, ...]) -> Tensor:
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + out.grad.reshape(a.shape)
+            a.grad += out.grad.reshape(a.shape)
 
     out._backward = _backward
     return out
@@ -293,7 +293,7 @@ def transpose(a: Tensor, axes=None) -> Tensor:
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + np.transpose(out.grad, inv_axes)
+            a.grad += np.transpose(out.grad, inv_axes)
 
     out._backward = _backward
     return out
@@ -312,7 +312,7 @@ def relu(a: Tensor) -> Tensor:
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + (a.data > 0) * out.grad
+            a.grad += (a.data > 0) * out.grad
 
     out._backward = _backward
     return out
@@ -332,7 +332,7 @@ def leaky_relu(a: Tensor, negative_slope: float = 0.01) -> Tensor:
             return
         if a.requires_grad:
             grad = np.where(a.data > 0, 1.0, negative_slope) * out.grad
-            a.grad = a.grad + grad
+            a.grad += grad
 
     out._backward = _backward
     return out
@@ -340,14 +340,19 @@ def leaky_relu(a: Tensor, negative_slope: float = 0.01) -> Tensor:
 
 def sigmoid(a: Tensor) -> Tensor:
     """Sigmoid activation: 1 / (1 + exp(-x))."""
-    sig = 1 / (1 + np.exp(-np.clip(a.data, -500, 500)))  # Clip for numerical stability
+    # Use a dtype-dependent safe exponent range to avoid float32 overflow.
+    x = a.data
+    finfo = np.finfo(x.dtype)
+    max_log = float(np.log(finfo.max) - 2.0)  # margin for safety
+    x_clip = np.clip(x, -max_log, max_log)
+    sig = 1 / (1 + np.exp(-x_clip))
     out = Tensor(sig, requires_grad=a.requires_grad, _children=(a,), _op="sigmoid")
 
     def _backward():
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + sig * (1 - sig) * out.grad
+            a.grad += sig * (1 - sig) * out.grad
 
     out._backward = _backward
     return out
@@ -362,7 +367,7 @@ def tanh(a: Tensor) -> Tensor:
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + (1 - tanh_val**2) * out.grad
+            a.grad += (1 - tanh_val**2) * out.grad
 
     out._backward = _backward
     return out
@@ -388,7 +393,7 @@ def softmax(a: Tensor, axis: int = -1) -> Tensor:
             s = softmax_val
             grad_out = out.grad
             sum_term = (grad_out * s).sum(axis=axis, keepdims=True)
-            a.grad = a.grad + s * (grad_out - sum_term)
+            a.grad += s * (grad_out - sum_term)
 
     out._backward = _backward
     return out
@@ -415,7 +420,7 @@ def log_softmax(a: Tensor, axis: int = -1) -> Tensor:
             # grad = grad_out - softmax * grad_out.sum()
             softmax_val = np.exp(log_softmax_val)
             sum_term = out.grad.sum(axis=axis, keepdims=True)
-            a.grad = a.grad + (out.grad - softmax_val * sum_term)
+            a.grad += (out.grad - softmax_val * sum_term)
 
     out._backward = _backward
     return out
@@ -479,7 +484,7 @@ def cross_entropy(
                 grad = np.exp(log_probs.data)  # softmax
                 grad[np.arange(batch_size), target_data] -= 1
                 grad = grad / batch_size * out.grad
-                log_probs.grad = log_probs.grad + grad
+                log_probs.grad += grad
 
         out._backward = _backward
         return out
@@ -504,7 +509,7 @@ def clip(a: Tensor, min_value: float, max_value: float) -> Tensor:
         if a.requires_grad:
             # Undefined at the exact boundaries; we choose 0 gradient there.
             mask = (a.data > min_value) & (a.data < max_value)
-            a.grad = a.grad + mask * out.grad
+            a.grad += mask * out.grad
 
     out._backward = _backward
     return out
@@ -512,14 +517,20 @@ def clip(a: Tensor, min_value: float, max_value: float) -> Tensor:
 
 def exp(a: Tensor) -> Tensor:
     """Element-wise exponential."""
-    exp_val = np.exp(np.clip(a.data, -500, 500))
+    # NOTE:
+    # - For float32, exp(500) overflows to inf (and gradients become NaN).
+    # - Clip to a dtype-dependent safe range based on log(max_float).
+    x = a.data
+    finfo = np.finfo(x.dtype)
+    max_log = float(np.log(finfo.max) - 2.0)  # margin for safety
+    exp_val = np.exp(np.clip(x, -max_log, max_log))
     out = Tensor(exp_val, requires_grad=a.requires_grad, _children=(a,), _op="exp")
 
     def _backward():
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + exp_val * out.grad
+            a.grad += exp_val * out.grad
 
     out._backward = _backward
     return out
@@ -538,7 +549,7 @@ def log(a: Tensor) -> Tensor:
         if out.grad is None:
             return
         if a.requires_grad:
-            a.grad = a.grad + (1.0 / np.clip(a.data, EPS, None)) * out.grad
+            a.grad += (1.0 / np.clip(a.data, EPS, None)) * out.grad
 
     out._backward = _backward
     return out
