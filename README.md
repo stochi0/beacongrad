@@ -1,8 +1,12 @@
 ## BeaconGrad
 
-A tiny, fun NumPy autograd engine you can read in one sitting — **tensor-first**, with **broadcasting-aware** ops.
+<p align="center">
+  <img src="assets/mascot.svg" width="180" alt="BeaconGrad mascot" />
+</p>
 
-### What’s included
+A tiny, fun NumPy autograd engine you can read in one sitting — **tensor-first**, with **broadcasting-aware** ops. Implements backpropagation (reverse-mode autodiff) over a dynamically built DAG and a neural networks library on top of it with a PyTorch-like API.
+
+### What's included
 - **Autograd**: `Tensor` (n‑D arrays) with reverse-mode autodiff
 - **Ops**: broadcasting-aware arithmetic, matmul, reductions, activations, basic losses
 - **nn**: `Module`, `Linear`, `Sequential`, `MLP`, activations, dropout, batchnorm, embedding
@@ -70,7 +74,52 @@ uv run python examples/02_neural_network.py
 uv run python examples/03_classification.py
 uv run python examples/04_custom_model.py
 uv run python examples/05_mlp.py
+uv run python examples/06_visualize_graph.py
+uv run python examples/07_decision_boundary.py
 ```
 
+### Computation Graph Visualization
+
+BeaconGrad includes utilities to visualize computation graphs using Graphviz. This is useful for understanding how gradients flow through your computation:
+
+```python
+from beacongrad import Tensor
+from beacongrad.viz import draw_dot
+
+a = Tensor([2.0, 3.0], requires_grad=True)
+b = Tensor([1.0, 4.0], requires_grad=True)
+c = a * b
+d = c.sum()
+d.backward()
+
+# Visualize the computation graph
+graph = draw_dot(d)
+graph.render("assets/example_06_graph_simple", format="svg")  # Saves into assets/
+```
+
+The graph shows:
+- **Data values** (left number in each node)
+- **Gradients** (right number, after backward pass)
+- **Operations** (labels on nodes)
+- **Shape information** for tensors
+
+![Computation Graph](assets/example_06_graph_simple.svg)
+
+### Training a Neural Network
+
+The example `examples/07_decision_boundary.py` demonstrates training a 2-layer MLP binary classifier on synthetic 2D data. Using a 2-layer neural net with two 16-node hidden layers, we achieve the following decision boundary:
+
+![Decision Boundary](assets/example_07_decision_boundary_binary.png)
+
+The visualization shows:
+- **Decision boundary** learned by the network
+- **Training data** with different classes
+- **Training loss** over epochs
+
+For multi-class classification:
+
+![3-Class Decision Boundary](assets/example_07_decision_boundary_3class.png)
+
 ### Notes
-- `graphviz` is included as a dependency for future graph visualization (it’s not required for the core engine today).
+- `graphviz` and `matplotlib` are included as dependencies for visualization capabilities.
+- Mascot: [OpenMoji "Lighthouse of Alexandria" (E212)](https://openmoji.org/library/emoji-E212/) (CC BY-SA 4.0).

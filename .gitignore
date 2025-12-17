@@ -37,3 +37,4 @@ Thumbs.db
 # Generated files
 *.svg
 graph_*.svg
+!assets/**/*.svg
