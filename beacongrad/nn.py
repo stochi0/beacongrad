@@ -378,3 +378,161 @@ class BCELoss(Module):
 
     def __repr__(self):
         return "BCELoss()"
+
+
+class Attention(Module):
+    """
+    Scaled Dot-Product Attention mechanism.
+    
+    Implements: Attention(Q, K, V) = softmax(Q @ K^T / sqrt(d_k)) @ V
+    
+    Args:
+        embed_dim: Dimension of embeddings (d_model)
+        num_heads: Number of attention heads (for multi-head attention, default=1)
+        dropout: Dropout probability (default=0.0)
+    """
+
+    def __init__(self, embed_dim: int, num_heads: int = 1, dropout: float = 0.0):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        
+        if embed_dim % num_heads != 0:
+            raise ValueError(f"embed_dim ({embed_dim}) must be divisible by num_heads ({num_heads})")
+        
+        self.scale = self.head_dim ** -0.5  # 1 / sqrt(d_k)
+        
+        # For multi-head attention, we'll project Q, K, V
+        if num_heads > 1:
+            self.q_proj = Linear(embed_dim, embed_dim, bias=False)
+            self.k_proj = Linear(embed_dim, embed_dim, bias=False)
+            self.v_proj = Linear(embed_dim, embed_dim, bias=False)
+            self.out_proj = Linear(embed_dim, embed_dim, bias=False)
+            self._modules = [self.q_proj, self.k_proj, self.v_proj, self.out_proj]
+        else:
+            # Single head attention - no projections needed if Q, K, V are provided
+            self.q_proj = None
+            self.k_proj = None
+            self.v_proj = None
+            self.out_proj = None
+        
+        if dropout > 0:
+            self.dropout = Dropout(dropout)
+            self._modules.append(self.dropout)
+        else:
+            self.dropout = None
+
+    def forward(
+        self, 
+        query: Tensor, 
+        key: Tensor = None, 
+        value: Tensor = None,
+        mask: Tensor = None
+    ) -> Tensor:
+        """
+        Forward pass of attention.
+        
+        Args:
+            query: Query tensor of shape (batch_size, seq_len_q, embed_dim)
+            key: Key tensor of shape (batch_size, seq_len_k, embed_dim). 
+                 If None, uses query.
+            value: Value tensor of shape (batch_size, seq_len_v, embed_dim).
+                   If None, uses query.
+            mask: Optional mask tensor of shape (batch_size, seq_len_q, seq_len_k)
+                  or (seq_len_q, seq_len_k). Values should be 0 for masked positions.
+        
+        Returns:
+            Output tensor of shape (batch_size, seq_len_q, embed_dim)
+        """
+        # If key/value not provided, use query (self-attention)
+        if key is None:
+            key = query
+        if value is None:
+            value = query
+        
+        batch_size, seq_len_q, _ = query.shape
+        seq_len_k = key.shape[1]
+        
+        # Multi-head attention: project Q, K, V
+        if self.num_heads > 1:
+            Q = self.q_proj(query)  # (batch_size, seq_len_q, embed_dim)
+            K = self.k_proj(key)    # (batch_size, seq_len_k, embed_dim)
+            V = self.v_proj(value)  # (batch_size, seq_len_v, embed_dim)
+            
+            # Reshape for multi-head: (batch_size, seq_len, num_heads, head_dim)
+            Q = Q.reshape(batch_size, seq_len_q, self.num_heads, self.head_dim)
+            K = K.reshape(batch_size, seq_len_k, self.num_heads, self.head_dim)
+            V = V.reshape(batch_size, value.shape[1], self.num_heads, self.head_dim)
+            
+            # Transpose to (batch_size, num_heads, seq_len, head_dim)
+            Q = Q.transpose(axes=(0, 2, 1, 3))
+            K = K.transpose(axes=(0, 2, 1, 3))
+            V = V.transpose(axes=(0, 2, 1, 3))
+        else:
+            Q = query
+            K = key
+            V = value
+        
+        # Compute attention scores: Q @ K^T / sqrt(d_k)
+        # For multi-head: (batch_size, num_heads, seq_len_q, head_dim) @ 
+        #                 (batch_size, num_heads, head_dim, seq_len_k)
+        # For single-head: (batch_size, seq_len_q, embed_dim) @ 
+        #                  (batch_size, embed_dim, seq_len_k)
+        if self.num_heads > 1:
+            # Q: (batch_size, num_heads, seq_len_q, head_dim)
+            # K: (batch_size, num_heads, seq_len_k, head_dim)
+            # Need to transpose K: (batch_size, num_heads, head_dim, seq_len_k)
+            K_T = K.transpose(axes=(0, 1, 3, 2))
+            scores = Q @ K_T * self.scale  # (batch_size, num_heads, seq_len_q, seq_len_k)
+        else:
+            # Single head: (batch_size, seq_len_q, embed_dim) @ (batch_size, embed_dim, seq_len_k)
+            scores = Q @ K.transpose(axes=(0, 2, 1)) * self.scale
+            # scores: (batch_size, seq_len_q, seq_len_k)
+        
+        # Apply mask if provided
+        if mask is not None:
+            # Mask should be 0 for positions to mask, 1 for valid positions
+            # Convert to large negative values for masked positions
+            if mask.ndim == 2:
+                # Broadcast mask: (seq_len_q, seq_len_k) -> (batch_size, seq_len_q, seq_len_k)
+                mask = Tensor(mask.data[None, :, :], requires_grad=False)
+            elif mask.ndim == 3:
+                # (batch_size, seq_len_q, seq_len_k)
+                mask = mask
+            else:
+                raise ValueError(f"Mask must be 2D or 3D, got {mask.ndim}D")
+            
+            # Apply mask: set masked positions to large negative value
+            scores = scores + (1.0 - mask) * (-1e9)
+        
+        # Apply softmax to get attention weights
+        if self.num_heads > 1:
+            attn_weights = scores.softmax(axis=-1)  # (batch_size, num_heads, seq_len_q, seq_len_k)
+        else:
+            attn_weights = scores.softmax(axis=-1)  # (batch_size, seq_len_q, seq_len_k)
+        
+        # Apply dropout
+        if self.dropout is not None:
+            attn_weights = self.dropout(attn_weights)
+        
+        # Apply attention to values: attn_weights @ V
+        if self.num_heads > 1:
+            # attn_weights: (batch_size, num_heads, seq_len_q, seq_len_k)
+            # V: (batch_size, num_heads, seq_len_v, head_dim)
+            out = attn_weights @ V  # (batch_size, num_heads, seq_len_q, head_dim)
+            
+            # Concatenate heads: transpose and reshape
+            out = out.transpose(axes=(0, 2, 1, 3))  # (batch_size, seq_len_q, num_heads, head_dim)
+            out = out.reshape(batch_size, seq_len_q, self.embed_dim)
+            
+            # Output projection
+            out = self.out_proj(out)
+        else:
+            # Single head: (batch_size, seq_len_q, seq_len_k) @ (batch_size, seq_len_v, embed_dim)
+            out = attn_weights @ V  # (batch_size, seq_len_q, embed_dim)
+        
+        return out
+
+    def __repr__(self):
+        return f"Attention(embed_dim={self.embed_dim}, num_heads={self.num_heads}, dropout={self.dropout.p if self.dropout else 0.0})"
