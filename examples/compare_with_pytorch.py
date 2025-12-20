@@ -18,6 +18,7 @@ import numpy as np
 
 from beacongrad.tensor import Tensor
 from beacongrad import ops
+from beacongrad.nn import Attention
 
 
 def _max_abs(x: np.ndarray) -> float:
@@ -143,6 +144,139 @@ def parity_mlp_2layer():
     return fwd_err, grad_err
 
 
+def _torch_attention_single_head(query_th, *, scale: float):
+    # query_th: (batch, seq, embed)
+    # Self-attention with Q=K=V=query
+    scores = (query_th @ query_th.transpose(-1, -2)) * scale  # (batch, seq, seq)
+    attn = scores.softmax(dim=-1)
+    out = attn @ query_th  # (batch, seq, embed)
+    return out
+
+
+def _torch_attention_multi_head(
+    query_th,
+    *,
+    wq_th,
+    wk_th,
+    wv_th,
+    wo_th,
+    num_heads: int,
+    head_dim: int,
+    scale: float,
+):
+    # Mirrors beacongrad.nn.Attention forward for num_heads > 1 (dropout=0, no bias)
+    # query_th: (batch, seq, embed)
+    Q = query_th @ wq_th.T
+    K = query_th @ wk_th.T
+    V = query_th @ wv_th.T
+
+    bsz, seq_len, embed_dim = query_th.shape
+    Q = Q.reshape(bsz, seq_len, num_heads, head_dim).transpose(1, 2)  # (b, h, s, d)
+    K = K.reshape(bsz, seq_len, num_heads, head_dim).transpose(1, 2)
+    V = V.reshape(bsz, seq_len, num_heads, head_dim).transpose(1, 2)
+
+    scores = (Q @ K.transpose(-1, -2)) * scale  # (b, h, s, s)
+    attn = scores.softmax(dim=-1)
+    out = attn @ V  # (b, h, s, d)
+
+    out = out.transpose(1, 2).reshape(bsz, seq_len, embed_dim)  # (b, s, embed)
+    out = out @ wo_th.T
+    return out
+
+
+def parity_attention():
+    import torch
+
+    np.random.seed(0)
+    torch.manual_seed(0)
+    dtype = torch.float64
+
+    print("\nAttention parity")
+
+    # -------------------------
+    # Single-head self-attention
+    # -------------------------
+    bsz, seq_len, embed_dim = 2, 5, 8
+    x_np = np.random.randn(bsz, seq_len, embed_dim).astype(np.float64)
+
+    attn_bg = Attention(embed_dim=embed_dim, num_heads=1, dropout=0.0)
+    x_bg = Tensor(x_np, requires_grad=True, dtype=np.float64)
+    y_bg = attn_bg(x_bg)
+    loss_bg = ops.mse_loss(y_bg, Tensor(np.zeros_like(y_bg.data), dtype=np.float64))
+    loss_bg.backward()
+
+    x_th = torch.from_numpy(x_np).to(dtype).requires_grad_(True)
+    y_th = _torch_attention_single_head(x_th, scale=float(attn_bg.scale))
+    loss_th = torch.mean((y_th - torch.zeros_like(y_th)) ** 2)
+    loss_th.backward()
+
+    fwd_err_sh = _max_err(y_bg.data, y_th.detach().cpu().numpy())
+    dx_err_sh = _max_err(x_bg.grad, x_th.grad.detach().cpu().numpy())
+    grad_err_sh = float(dx_err_sh)
+    _print_row("Attention (1h)", fwd_err_sh, grad_err_sh)
+
+    # -------------------------
+    # Multi-head self-attention (includes projection weights)
+    # -------------------------
+    bsz, seq_len, embed_dim, num_heads = 2, 4, 8, 2
+    head_dim = embed_dim // num_heads
+    x_np = np.random.randn(bsz, seq_len, embed_dim).astype(np.float64)
+
+    wq_np = np.random.randn(embed_dim, embed_dim).astype(np.float64)
+    wk_np = np.random.randn(embed_dim, embed_dim).astype(np.float64)
+    wv_np = np.random.randn(embed_dim, embed_dim).astype(np.float64)
+    wo_np = np.random.randn(embed_dim, embed_dim).astype(np.float64)
+
+    attn_bg = Attention(embed_dim=embed_dim, num_heads=num_heads, dropout=0.0)
+    # Overwrite weights so Torch + BeaconGrad use identical parameters
+    attn_bg.q_proj.weight.data = wq_np
+    attn_bg.k_proj.weight.data = wk_np
+    attn_bg.v_proj.weight.data = wv_np
+    attn_bg.out_proj.weight.data = wo_np
+    for p in [attn_bg.q_proj.weight, attn_bg.k_proj.weight, attn_bg.v_proj.weight, attn_bg.out_proj.weight]:
+        p.data = p.data.astype(np.float64, copy=False)
+        p.dtype = np.float64
+
+    x_bg = Tensor(x_np, requires_grad=True, dtype=np.float64)
+    y_bg = attn_bg(x_bg)
+    loss_bg = ops.mse_loss(y_bg, Tensor(np.zeros_like(y_bg.data), dtype=np.float64))
+    loss_bg.backward()
+
+    x_th = torch.from_numpy(x_np).to(dtype).requires_grad_(True)
+    wq_th = torch.from_numpy(wq_np).to(dtype).requires_grad_(True)
+    wk_th = torch.from_numpy(wk_np).to(dtype).requires_grad_(True)
+    wv_th = torch.from_numpy(wv_np).to(dtype).requires_grad_(True)
+    wo_th = torch.from_numpy(wo_np).to(dtype).requires_grad_(True)
+
+    y_th = _torch_attention_multi_head(
+        x_th,
+        wq_th=wq_th,
+        wk_th=wk_th,
+        wv_th=wv_th,
+        wo_th=wo_th,
+        num_heads=num_heads,
+        head_dim=head_dim,
+        scale=float(attn_bg.scale),
+    )
+    loss_th = torch.mean((y_th - torch.zeros_like(y_th)) ** 2)
+    loss_th.backward()
+
+    fwd_err_mh = _max_err(y_bg.data, y_th.detach().cpu().numpy())
+    errs = [
+        _max_err(x_bg.grad, x_th.grad.detach().cpu().numpy()),
+        _max_err(attn_bg.q_proj.weight.grad, wq_th.grad.detach().cpu().numpy()),
+        _max_err(attn_bg.k_proj.weight.grad, wk_th.grad.detach().cpu().numpy()),
+        _max_err(attn_bg.v_proj.weight.grad, wv_th.grad.detach().cpu().numpy()),
+        _max_err(attn_bg.out_proj.weight.grad, wo_th.grad.detach().cpu().numpy()),
+    ]
+    grad_err_mh = float(max(errs))
+    _print_row("Attention (2h)", fwd_err_mh, grad_err_mh)
+
+    fwd_err = float(max(fwd_err_sh, fwd_err_mh))
+    grad_err = float(max(grad_err_sh, grad_err_mh))
+    return fwd_err, grad_err
+
+
 if __name__ == "__main__":
     _require_torch()
 
@@ -157,6 +291,9 @@ if __name__ == "__main__":
 
     fwd, grad = parity_mlp_2layer()
     rows.append(("MLP", fwd, grad))
+
+    fwd, grad = parity_attention()
+    rows.append(("Attention", fwd, grad))
 
     print("\nSummary")
     print("Model\tForward max error\tGrad max error")
