@@ -38,6 +38,7 @@ from .nn import (
     Dropout,
     BatchNorm1d,
     Embedding,
+    Attention,
     MSELoss,
     CrossEntropyLoss,
     BCELoss,
@@ -94,6 +95,7 @@ __all__ = [
     "Dropout",
     "BatchNorm1d",
     "Embedding",
+    "Attention",
     # Loss functions
     "MSELoss",
     "CrossEntropyLoss",
