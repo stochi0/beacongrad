@@ -1,193 +1,108 @@
-## BeaconGrad
+# BeaconGrad
 
-<p align="center">
-  <img src="assets/mascot.svg" width="180" alt="BeaconGrad mascot" />
-</p>
+NumPy autograd and a neural-network library with a PyTorch-style API.
+BeaconGrad builds a computation graph from tensor operations and propagates
+gradients through it using reverse-mode automatic differentiation.
 
-A tiny, fun NumPy autograd engine you can read in one sitting — **tensor-first**, with **broadcasting-aware** ops. Implements backpropagation (reverse-mode autodiff) over a dynamically built DAG and a neural networks library on top of it with a PyTorch-like API.
+## What is included
 
-### What's included
-- **Autograd**: `Tensor` (n‑D arrays) with reverse-mode autodiff
-- **Ops**: broadcasting-aware arithmetic, matmul, reductions, activations, basic losses
-- **nn**: `Module`, `Linear`, `Sequential`, `MLP`, activations, dropout, batchnorm, embedding
-- **optim**: `SGD`, `Adam`, `RMSprop`, `AdaGrad`
+- N-dimensional tensors, broadcasting-aware arithmetic, matrix multiplication,
+  reductions, activations, and losses.
+- Layers and modules including linear layers, MLPs, attention, embeddings,
+  dropout, and batch normalization.
+- SGD, Adam, RMSprop, and AdaGrad optimizers.
+- Finite-difference gradient checks, PyTorch comparisons, and graph visualization.
 
-### Install
-This project uses **uv**.
+This is an implementation for studying autodiff. NumPy operations are not
+optimized for large-scale training.
 
-```bash
-uv sync
+## Installation
+
+Use Python 3.9 or later and [uv](https://docs.astral.sh/uv/):
+
+```sh
+git clone https://github.com/stochi0/beacongrad.git
+cd beacongrad
+uv sync --locked
 ```
 
-### Install as a package (editable)
-If you want `import beacongrad` to work from anywhere (and to hack on it locally), install it in editable mode:
+For an editable package installation, run `uv pip install -e .` after syncing.
 
-```bash
-uv sync
-uv pip install -e .
-uv run python -c "import beacongrad; print(beacongrad.__version__)"
-```
-
-### Build (wheel + sdist)
-
-```bash
-uv build
-```
-
-### Quick usage
-
-```python
-import numpy as np
-from beacongrad import Tensor, Sequential, Linear, ReLU, MSELoss, Adam
-
-# Synthetic regression data
-np.random.seed(0)
-X = Tensor(np.random.randn(256, 10).astype(np.float32))
-y = Tensor(np.random.randn(256, 1).astype(np.float32))
-
-model = Sequential(
-    Linear(10, 32),
-    ReLU(),
-    Linear(32, 1),
-)
-
-loss_fn = MSELoss()
-opt = Adam(model.parameters(), lr=1e-2)
-
-for epoch in range(100):
-    pred = model(X)
-    loss = loss_fn(pred, y)
-
-    opt.zero_grad()
-    loss.backward()
-    opt.step()
-
-    if (epoch + 1) % 10 == 0:
-        print(f"epoch={epoch+1} loss={loss.item():.4f}")
-```
-
-### Run examples
-
-```bash
-uv run python examples/01_basic_tensor.py
-uv run python examples/02_neural_network.py
-uv run python examples/03_classification.py
-uv run python examples/04_custom_model.py
-uv run python examples/05_mlp.py
-uv run python examples/06_visualize_graph.py
-uv run python examples/07_decision_boundary.py
-uv run python examples/08_gradcheck.py
-uv run python examples/compare_with_pytorch.py
-```
-
-### PyTorch parity checks 
-To validate BeaconGrad against PyTorch, `examples/compare_with_pytorch.py` compares **forward outputs** and **backprop gradients** against PyTorch using `torch.float64`.
-
-If you don't have PyTorch installed in the uv environment:
-
-```bash
-uv pip install torch
-```
-
-Then run:
-
-```bash
-uv run python examples/compare_with_pytorch.py
-```
-
-#### Results (reported by `examples/compare_with_pytorch.py`)
-
-```
-============================================================
-BeaconGrad vs PyTorch parity checks (float64)
-============================================================
-
-Linear parity
-  forward max error: 0.000e+00
-  dx max error:      0.000e+00
-  dW max error:      2.220e-16
-  db max error:      0.000e+00
-
-MLP (2-layer) parity
-  forward max error: 0.000e+00
-  grad max error:    3.553e-15
-
-Attention parity
-Attention (1h)      forward=1.476e-08  grad=8.761e-10
-Attention (2h)      forward=7.105e-15  grad=2.631e-14
-
-Summary
-Model   Forward max error       Grad max error
-Linear  0.000e+00       2.220e-16
-MLP     0.000e+00       3.553e-15
-Attention       1.476e-08       8.761e-10
-```
-
-#### Summary
-
-| Model  | Forward max error | Grad max error |
-|--------|------------------:|---------------:|
-| Linear | `0.000e+00`       | `2.220e-16`    |
-| MLP    | `0.000e+00`       | `3.553e-15`    |
-| Attention | `1.476e-08`    | `8.761e-10`    |
-
-#### Parity plot
-
-![BeaconGrad vs PyTorch parity plot](assets/parity_comparison.png)
-
-To regenerate:
-
-```bash
-uv run python examples/10_parity_plot.py
-```
-
-### Computation Graph Visualization
-
-BeaconGrad includes utilities to visualize computation graphs using Graphviz. This is useful for understanding how gradients flow through your computation:
+## A first gradient
 
 ```python
 from beacongrad import Tensor
-from beacongrad.viz import draw_dot
 
-a = Tensor([2.0, 3.0], requires_grad=True)
-b = Tensor([1.0, 4.0], requires_grad=True)
-c = a * b
-d = c.sum()
-d.backward()
+x = Tensor([2.0, 3.0], requires_grad=True)
+loss = (x * x).sum()
+loss.backward()
 
-# Visualize the computation graph
-graph = draw_dot(d)
-graph.render("assets/example_06_graph_simple", format="svg")  # Saves into assets/
+print(loss.item())  # 13.0
+print(x.grad)      # [4. 6.]
 ```
 
-The graph shows:
-- **Data values** (left number in each node)
-- **Gradients** (right number, after backward pass)
-- **Operations** (labels on nodes)
-- **Shape information** for tensors
+For a complete training loop:
 
-![Computation Graph](assets/example_06_graph_simple.svg)
+```sh
+uv run python examples/02_neural_network.py
+```
 
-### Training a Neural Network
+## Gradient and parity checks
 
-The example `examples/07_decision_boundary.py` demonstrates training a 2-layer MLP binary classifier on synthetic 2D data. Using a 2-layer neural net with two 16-node hidden layers, we achieve the following decision boundary:
+Check derivatives against finite differences:
 
-![Decision Boundary](assets/example_07_decision_boundary_binary.png)
+```sh
+uv run python examples/08_gradcheck.py
+```
 
-The visualization shows:
-- **Decision boundary** learned by the network
-- **Training data** with different classes
-- **Training loss** over epochs
+Compare forward outputs and gradients against PyTorch for linear layers, an MLP,
+and attention. PyTorch is an optional dependency for this comparison:
 
-For multi-class classification:
+```sh
+uv pip install torch
+uv run python examples/compare_with_pytorch.py
+```
 
-![3-Class Decision Boundary](assets/example_07_decision_boundary_3class.png)
+The script reports maximum absolute output and gradient errors for its test
+cases. These checks cover the included examples rather than the entire API.
+The retained comparison plot can be regenerated with
+`uv run python examples/10_parity_plot.py`.
 
-### Limitations
+![Maximum absolute output and gradient errors in the retained PyTorch comparison](assets/parity_comparison.png)
 
-BeaconGrad prioritizes clarity and correctness over performance; operations are NumPy-based and not optimized for large-scale training.
+## Examples and visualizations
 
-### Notes
-- If you're new to autodiff, definitely check out the OG: Andrej Karpathy’s [micrograd](https://github.com/karpathy/micrograd). It'll make BeaconGrad even easier to follow.
-- `graphviz` and `matplotlib` are included as dependencies for visualization capabilities.
-- Mascot: [OpenMoji "Lighthouse of Alexandria" (E212)](https://openmoji.org/library/emoji-E212/) (CC BY-SA 4.0).
+The [examples directory](examples/) progresses from tensor operations to training,
+attention, and gradient checks. Useful starting points:
+
+| Example | What it shows |
+| --- | --- |
+| [Basic tensors](examples/01_basic_tensor.py) | Operations and backpropagation |
+| [Custom modules](examples/04_custom_model.py) | Building a model with the module API |
+| [Computation graphs](examples/06_visualize_graph.py) | Values, operations, shapes, and gradients |
+| [Decision boundaries](examples/07_decision_boundary.py) | Binary and multiclass classification |
+| [Attention](examples/09_attention.py) | Attention built from differentiable operations |
+
+Graph rendering requires the system Graphviz executable as well as the included
+Python `graphviz` dependency.
+
+![A computation graph with values and gradients](assets/example_06_graph_simple.svg)
+
+<details>
+<summary>Retained classification examples</summary>
+
+![Binary classification decision boundary and training loss](assets/example_07_decision_boundary_binary.png)
+
+![Three-class classification decision boundary and training loss](assets/example_07_decision_boundary_3class.png)
+
+</details>
+
+## Development and references
+
+```sh
+uv build
+```
+
+[micrograd](https://github.com/karpathy/micrograd) is a useful starting point for
+scalar autodiff. BeaconGrad extends that learning exercise to tensor operations.
+The unused mascot asset retains its [OpenMoji attribution](assets/ATTRIBUTION.md).
