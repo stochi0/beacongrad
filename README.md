@@ -106,5 +106,3 @@ uv build
 [micrograd](https://github.com/karpathy/micrograd) is a useful starting point for
 scalar autodiff. BeaconGrad extends that learning exercise to tensor operations.
 The unused mascot asset retains its [OpenMoji attribution](assets/ATTRIBUTION.md).
-
-[Citation guide](CITATION.md) · [BibTeX](CITATION.bib)
