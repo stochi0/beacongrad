@@ -106,3 +106,22 @@ uv build
 [micrograd](https://github.com/karpathy/micrograd) is a useful starting point for
 scalar autodiff. BeaconGrad extends that learning exercise to tensor operations.
 The unused mascot asset retains its [OpenMoji attribution](assets/ATTRIBUTION.md).
+
+## Citation
+
+<!-- BEGIN generated citations -->
+
+Citation metadata matches the [ORCID record](https://orcid.org/0009-0007-2252-8905). [Complete bibliography](https://www.latentpaths.com/citations/all.bib).
+
+```bibtex
+@software{bodadeprojectbeacongrad,
+  author = {Bodade, Ayush},
+  title = {{BeaconGrad}},
+  url = {https://github.com/stochi0/beacongrad},
+  note = {Software implementation; cite the original research separately. Specify the commit or version used.}
+}
+```
+
+[Citation file](https://www.latentpaths.com/citations/project/beacongrad.bib) · [Work](https://github.com/stochi0/beacongrad)
+
+<!-- END generated citations -->
